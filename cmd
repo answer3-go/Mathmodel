@@ -1,0 +1,1 @@
+.\mathmodel\Scripts\Activate.ps1

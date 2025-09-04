@@ -1,0 +1,247 @@
+第一步：搭建“物理引擎”
+在画图之前，我们得先有东西可画。我们需要一些函数来计算出在任何给定策略下，所有物体的完整运动轨迹。这部分就是我们整个工具的“物理引擎”。
+我们创建一个名为 simulation.py 的文件。
+code
+Python
+# simulation.py
+import numpy as np
+
+# --- 1. 定义全局物理常量 ---
+G_ACCEL = np.array([0, 0, -9.8])  # 重力加速度 (m/s^2)
+CLOUD_VELOCITY = np.array([0, 0, -3.0]) # 烟幕云下沉速度 (m/s)
+
+# --- 2. 定义独立的运动轨迹计算函数 ---
+
+def calculate_missile_path(p_start, v_missile, time_vector):
+    """计算导弹的匀速直线运动轨迹"""
+    # p_start 和 v_missile 都是 (x,y,z) 形式的numpy数组
+    return p_start + v_missile * time_vector[:, np.newaxis]
+
+def calculate_uav_path(p_start, v_uav, time_vector):
+    """计算无人机的匀速直线运动轨迹"""
+    return p_start + v_uav * time_vector[:, np.newaxis]
+
+def calculate_grenade_path(p_drop, v_drop, drop_time, detonate_time):
+    """计算烟幕弹的抛体运动轨迹"""
+    # 计算从投放到爆炸的持续时间
+    flight_duration = detonate_time - drop_time
+    # 创建这段时间内的局部时间向量
+    time_grenade = np.linspace(0, flight_duration, int(flight_duration / 0.1) + 1)
+    
+    # 抛物线公式: P(t) = P0 + V0*t + 0.5*g*t^2
+    path = p_drop + v_drop * time_grenade[:, np.newaxis] + 0.5 * G_ACCEL * time_grenade[:, np.newaxis]**2
+    return path
+
+def calculate_cloud_path(p_detonate, detonate_time, end_time):
+    """计算烟幕云的匀速下沉轨迹"""
+    # 计算从爆炸到仿真结束的持续时间
+    drift_duration = end_time - detonate_time
+    # 创建这段时间内的局部时间向量
+    time_cloud = np.linspace(0, drift_duration, int(drift_duration / 0.1) + 1)
+    
+    path = p_detonate + CLOUD_VELOCITY * time_cloud[:, np.newaxis]
+    return path
+
+print("物理引擎 (simulation.py) 模块已创建！")
+导师讲解:
+我们把每个物体的运动规律都封装成了独立的函数，这叫“解耦”，让代码非常清晰。
+我们大量使用了 numpy 数组。为什么？因为它能进行“广播”运算，比如 v_missile * time_vector[:, np.newaxis]，这一行代码就能瞬间算出所有时间点的位置，比用 for 循环快得多。[:, np.newaxis] 是个小技巧，用来将一维的时间数组变成二维，以便和三维的位置向量正确相乘。
+calculate_grenade_path 和 calculate_cloud_path 使用的是相对时间，这样逻辑更清楚。
+第二步：打造“绘图器”
+现在我们有了计算轨迹的能力，接下来就是把它们画出来。我们创建第二个文件 visualization.py。
+code
+Python
+# visualization.py
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+
+# --- 1. 辅助函数：画一个圆柱体 ---
+def plot_cylinder(ax, center_x, center_y, radius, height_z):
+    """在给定的3D坐标轴上绘制一个圆柱体"""
+    z = np.linspace(0, height_z, 50)
+    theta = np.linspace(0, 2 * np.pi, 50)
+    theta_grid, z_grid = np.meshgrid(theta, z)
+    x_grid = radius * np.cos(theta_grid) + center_x
+    y_grid = radius * np.sin(theta_grid) + center_y
+    # 绘制圆柱表面
+    ax.plot_surface(x_grid, y_grid, z_grid, alpha=0.3, color='royalblue')
+    print("真目标圆柱体已绘制。")
+
+
+# --- 2. 核心函数：可视化整个场景 ---
+def plot_scenario(simulation_data):
+    """
+    接收仿真数据并将其3D可视化。
+    simulation_data 是一个字典，包含了所有物体的轨迹。
+    """
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 绘制真目标
+    target_info = simulation_data['target_info']
+    plot_cylinder(ax, target_info['center_x'], target_info['center_y'], 
+                  target_info['radius'], target_info['height'])
+
+    # 绘制导弹轨迹
+    missile_path = simulation_data['missile_path']
+    ax.plot(missile_path[:, 0], missile_path[:, 1], missile_path[:, 2], 
+            label='导弹 M1 轨迹', color='red', linestyle='-')
+    ax.scatter(missile_path[0, 0], missile_path[0, 1], missile_path[0, 2], 
+               color='red', marker='x', s=100, label='M1 起始点')
+
+    # 遍历并绘制每个无人机的策略
+    for uav_name, uav_data in simulation_data['uav_strategies'].items():
+        # 绘制无人机轨迹
+        uav_path = uav_data['uav_path']
+        ax.plot(uav_path[:, 0], uav_path[:, 1], uav_path[:, 2], 
+                label=f'{uav_name} 轨迹', color='blue', linestyle='--')
+        ax.scatter(uav_path[0, 0], uav_path[0, 1], uav_path[0, 2], 
+                   color='blue', marker='^', s=100, label=f'{uav_name} 起始点')
+
+        # 绘制该无人机投放的所有烟幕弹和烟幕云
+        for i, smoke_data in enumerate(uav_data['smokes']):
+            grenade_path = smoke_data['grenade_path']
+            cloud_path = smoke_data['cloud_path']
+            
+            # 绘制烟幕弹轨迹
+            ax.plot(grenade_path[:, 0], grenade_path[:, 1], grenade_path[:, 2], 
+                    label=f'{uav_name} 弹{i+1} 轨迹', color='green', linestyle=':')
+            
+            # 绘制烟幕云轨迹
+            ax.plot(cloud_path[:, 0], cloud_path[:, 1], cloud_path[:, 2], 
+                    label=f'{uav_name} 云{i+1} 轨迹', color='orange', linestyle='-.')
+            
+            # 标记关键点
+            ax.scatter(grenade_path[0, 0], grenade_path[0, 1], grenade_path[0, 2], 
+                       color='green', marker='o', label=f'投放点 {i+1}')
+            ax.scatter(cloud_path[0, 0], cloud_path[0, 1], cloud_path[0, 2], 
+                       color='orange', marker='*', s=150, label=f'起爆点 {i+1}')
+    
+    # 设置图表样式
+    ax.set_xlabel('X 轴 (m)')
+    ax.set_ylabel('Y 轴 (m)')
+    ax.set_zlabel('Z 轴 (m)')
+    ax.set_title('烟幕干扰弹投放策略三维可视化')
+    ax.legend()
+    plt.grid(True)
+    
+    # 尝试让坐标轴比例看起来更协调
+    # ax.set_aspect('equal') # 在3D中用下面这个方法替代
+    x_limits = ax.get_xlim3d()
+    y_limits = ax.get_ylim3d()
+    z_limits = ax.get_zlim3d()
+    x_range = abs(x_limits[1] - x_limits[0])
+    x_middle = np.mean(x_limits)
+    y_range = abs(y_limits[1] - y_limits[0])
+    y_middle = np.mean(y_limits)
+    z_range = abs(z_limits[1] - z_limits[0])
+    z_middle = np.mean(z_limits)
+    plot_radius = 0.5*max([x_range, y_range, z_range])
+    ax.set_xlim3d([x_middle - plot_radius, x_middle + plot_radius])
+    ax.set_ylim3d([y_middle - plot_radius, y_middle + plot_radius])
+    ax.set_zlim3d([z_middle - plot_radius, z_middle + plot_radius])
+
+    
+    plt.show()
+
+print("可视化工具 (visualization.py) 模块已创建！")
+导师讲解:
+我们先写了个小函数 plot_cylinder 来画真目标，这样主函数就干净了。
+核心函数 plot_scenario 只做一件事：接收一个包含所有轨迹数据的字典，然后把它画出来。它不关心这些数据是怎么算出来的，只负责“展示”。这就是“逻辑和视图分离”，是优秀软件设计的核心思想。
+我们用不同的颜色、线型和标记来区分不同的物体和事件，让图一目了然。
+最后一部分设置坐标轴比例的代码是为了防止图像在某个维度上被过度拉伸，让它看起来更符合真实的空间比例。
+第三步：整合与应用（解决问题1）
+现在我们有了“引擎”和“绘图器”，是时候把它们组装起来解决具体问题了。我们创建主文件 main.py。
+code
+Python
+# main.py
+import numpy as np
+from simulation import *
+from visualization import plot_scenario
+
+# --- 1. 定义问题1的场景和策略 ---
+
+# 场景设置
+P_M1_START = np.array([20000, 0, 2000])
+P_FAKE_TARGET = np.array([0, 0, 0])
+V_M1_SCALAR = 300.0
+
+P_FY1_START = np.array([17800, 0, 1800])
+
+TARGET_INFO = {'center_x': 0, 'center_y': 200, 'radius': 7, 'height': 10}
+
+# 问题1的特定策略
+strategy_q1 = {
+    'FY1': {
+        'initial_pos': P_FY1_START,
+        'velocity': np.array([-120.0, 0, 0]), # 朝向假目标等高飞行
+        'drop_times': [1.5],
+        'detonation_delays': [3.6]
+    }
+}
+
+# --- 2. 运行仿真 ---
+
+def run_full_simulation(strategy):
+    # 创建时间向量 (从0秒到导弹飞过目标，步长0.1秒)
+    # 导弹飞行总时间约 20000m / 300m/s = 66.7s
+    end_time = 70.0
+    time_vector = np.arange(0, end_time, 0.1)
+
+    # 计算导弹轨迹
+    dir_m1 = (P_FAKE_TARGET - P_M1_START) / np.linalg.norm(P_FAKE_TARGET - P_M1_START)
+    v_m1_vector = V_M1_SCALAR * dir_m1
+    missile_path = calculate_missile_path(P_M1_START, v_m1_vector, time_vector)
+
+    # 准备存储所有仿真结果的字典
+    simulation_data = {
+        'missile_path': missile_path,
+        'target_info': TARGET_INFO,
+        'uav_strategies': {}
+    }
+
+    # 遍历策略中的每个无人机
+    for uav_name, uav_plan in strategy.items():
+        # 计算无人机轨迹
+        uav_path = calculate_uav_path(uav_plan['initial_pos'], uav_plan['velocity'], time_vector)
+        
+        uav_data = {'uav_path': uav_path, 'smokes': []}
+
+        # 计算其投放的每个烟幕弹和云的轨迹
+        for i in range(len(uav_plan['drop_times'])):
+            t_drop = uav_plan['drop_times'][i]
+            t_detonate = t_drop + uav_plan['detonation_delays'][i]
+
+            # 找到投放点的精确位置和速度
+            p_drop = calculate_uav_path(uav_plan['initial_pos'], uav_plan['velocity'], np.array([t_drop]))[0]
+            v_drop = uav_plan['velocity'] # 无人机匀速，所以速度不变
+
+            # 计算烟幕弹轨迹
+            grenade_path = calculate_grenade_path(p_drop, v_drop, t_drop, t_detonate)
+            p_detonate = grenade_path[-1] # 爆炸点是烟幕弹轨迹的终点
+
+            # 计算烟幕云轨迹
+            cloud_path = calculate_cloud_path(p_detonate, t_detonate, end_time)
+
+            uav_data['smokes'].append({'grenade_path': grenade_path, 'cloud_path': cloud_path})
+        
+        simulation_data['uav_strategies'][uav_name] = uav_data
+    
+    return simulation_data
+
+# --- 3. 执行并可视化 ---
+
+if __name__ == "__main__":
+    print("正在为问题1运行仿真...")
+    q1_simulation_results = run_full_simulation(strategy_q1)
+    print("仿真完成！正在生成可视化图像...")
+    plot_scenario(q1_simulation_results)
+导师最终讲解:
+把你的三个文件放在同一个文件夹下。
+直接运行 main.py 文件。
+看魔法发生：程序会首先调用 run_full_simulation，这个函数会使用 simulation.py 里的工具，把问题1剧本里的所有轨迹都算出来，并打包成一个整洁的字典 q1_simulation_results。
+然后，这个数据包被传递给 visualization.py 里的 plot_scenario 函数，它会把它完美地画出来。
+如何全局复用？
+解决问题3: 你只需要修改 main.py 里的 strategy_q1 字典，给 drop_times 和 detonation_delays 列表里增加更多的值。你的三个核心函数一个字都不用改！
+解决问题4: 你只需要在 strategy 字典里增加 'FY2', 'FY3' 的条目。你的核心函数依然一个字都不用改！
