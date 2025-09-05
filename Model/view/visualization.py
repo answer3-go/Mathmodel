@@ -1,19 +1,17 @@
-# visualization.py (V2.0 版本 - 优化版)
+# visualization.py (V2.1 版本 - 革命性更新版)
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import numpy as np
 import warnings
+from simulation import SMOKE_LIFESPAN
 
 # --- 中文字体和负号的正确显示 ---
-# 这段代码确保图中的中文和负号都能正常显示
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
-# --- 1. 绘制基本形状的辅助函数 ---
-
+# --- 辅助函数 ---
 def plot_cylinder(ax, center_x, center_y, radius, height_z, color='royalblue', alpha=0.3):
-    """在指定的3D坐标轴上绘制一个圆柱体"""
     z = np.linspace(0, height_z, 50)
     theta = np.linspace(0, 2 * np.pi, 50)
     theta_grid, z_grid = np.meshgrid(theta, z)
@@ -22,27 +20,45 @@ def plot_cylinder(ax, center_x, center_y, radius, height_z, color='royalblue', a
     ax.plot_surface(x_grid, y_grid, z_grid, alpha=alpha, color=color)
 
 def plot_sphere(ax, center, radius, color='orange', alpha=0.2):
-    """在指定的3D坐标轴上绘制一个球体 (用于表示烟幕云)"""
     u = np.linspace(0, 2 * np.pi, 100)
     v = np.linspace(0, np.pi, 100)
     x = radius * np.outer(np.cos(u), np.sin(v)) + center[0]
     y = radius * np.outer(np.sin(u), np.sin(v)) + center[1]
     z = radius * np.outer(np.ones(np.size(u)), np.cos(v)) + center[2]
-    # 返回绘制的对象，方便在动画中移除
-    return ax.plot_surface(x, y, z, color=color, alpha=alpha)
+    ax.plot_surface(x, y, z, color=color, alpha=alpha)
 
+# --- V2.1 新增: 动态设置摄像机视角 ---
+def set_camera_view(ax, uav_pos, missile_pos, mode='focus', zoom_factor=1000):
+    """根据模式设置3D视图的中心和范围"""
+    if mode == 'full':
+        ax.set_xlim(-1000, 21000)
+        ax.set_ylim(-1000, 1000)
+        ax.set_zlim(0, 2500)
+    elif mode == 'focus':
+        center_point = (uav_pos + missile_pos) / 2.0
+        ax.set_xlim(center_point[0] - zoom_factor, center_point[0] + zoom_factor)
+        ax.set_ylim(center_point[1] - zoom_factor, center_point[1] + zoom_factor)
+        ax.set_zlim(max(0, center_point[2] - zoom_factor), center_point[2] + zoom_factor)
 
-# --- 2. V2.0 版本的静态图绘制函数 ---
+# --- 静态图绘制函数 (V2.1 信息完整版) ---
 def plot_scenario_static_v2(simulation_data, output_filename=None):
-    """根据仿真数据，生成一张高质量的静态3D轨迹图"""
     fig = plt.figure(figsize=(15, 12))
     ax = fig.add_subplot(111, projection='3d')
-    
     label_dict = {}
 
     target_info = simulation_data['target_info']
+    # 绘制真目标 (蓝色圆柱)
     plot_cylinder(ax, target_info['center_x'], target_info['center_y'], 
                   target_info['radius'], target_info['height'])
+    if '真目标' not in label_dict:
+        dummy_true = ax.scatter([], [], [], color='royalblue', marker='s', label='真目标')
+        label_dict['真目标'] = dummy_true
+
+    # 绘制假目标 (灰色圆柱)
+    plot_cylinder(ax, 0, 0, target_info['radius'], target_info['height'], color='gray', alpha=0.3)
+    if '假目标' not in label_dict:
+        dummy_fake = ax.scatter([], [], [], color='gray', marker='s', label='假目标')
+        label_dict['假目标'] = dummy_fake
 
     missile_colors = {'M1': 'red', 'M2': 'darkred', 'M3': 'firebrick'}
     for name, data in simulation_data['missile_paths'].items():
@@ -85,59 +101,67 @@ def plot_scenario_static_v2(simulation_data, output_filename=None):
                  ax.scatter(p_detonate[0], p_detonate[1], p_detonate[2], color='orange', marker='*', s=150)
             
             plot_sphere(ax, p_detonate, 10)
+            
+            # 补上烟幕弹抛物线轨迹
+            grenade_path = smoke['grenade_path']
+            if '烟幕弹轨迹' not in label_dict:
+                line_g, = ax.plot(grenade_path[:,0], grenade_path[:,1], grenade_path[:,2], color='green', linestyle=':', alpha=0.7, label='烟幕弹轨迹')
+                label_dict['烟幕弹轨迹'] = line_g
+            else:
+                ax.plot(grenade_path[:,0], grenade_path[:,1], grenade_path[:,2], color='green', linestyle=':', alpha=0.7)
 
-    ax.set_xlabel('X 轴 (m)'), ax.set_ylabel('Y 轴 (m)'), ax.set_zlabel('Z 轴 (m)')
+    ax.set_xlim(-1000, 21000); ax.set_ylim(-1000, 1000); ax.set_zlim(0, 2500)
+    ax.set_xlabel('X 轴 (m)'); ax.set_ylabel('Y 轴 (m)'); ax.set_zlabel('Z 轴 (m)')
     ax.set_title('战场想定三维静态可视化')
     ax.legend(label_dict.values(), label_dict.keys())
-    
+
     try:
         ax.set_box_aspect([1, 1, 1])
     except AttributeError:
-        warnings.warn("您的Matplotlib版本较低，无法使用set_box_aspect。三维图形比例可能失真，建议升级至 3.3 或更高版本。")
+        warnings.warn("您的Matplotlib版本较低，无法使用set_box_aspect。")
 
     if output_filename:
         plt.savefig(output_filename, dpi=300, bbox_inches='tight')
         print(f"静态图已保存至: {output_filename}")
-
     plt.show()
 
-# --- 3. V2.0 版本的动画生成函数 ---
-def animate_scenario(simulation_data, output_filename=None):
-    """根据仿真数据，生成一段动态的3D演进动画"""
+# --- 动画生成函数 (V2.1 智能摄像机版) ---
+def animate_scenario(simulation_data, camera_mode='full', output_filename=None):
     fig = plt.figure(figsize=(15, 12))
     ax = fig.add_subplot(111, projection='3d')
     time_vector = simulation_data['time_vector']
-
-    def init():
-        ax.clear()
-        plot_cylinder(ax, simulation_data['target_info']['center_x'], simulation_data['target_info']['center_y'],
-                      simulation_data['target_info']['radius'], simulation_data['target_info']['height'])
-        ax.set_xlabel('X 轴 (m)'), ax.set_ylabel('Y 轴 (m)'), ax.set_zlabel('Z 轴 (m)')
-        ax.set_title('战场想定三维动态可视化')
-        try:
-            ax.set_box_aspect([1, 1, 1])
-        except AttributeError: pass
-        return fig,
-
-    dynamic_elements = []
+    
+    legend_text = ("图例:\n"
+                   "红色 X: 导弹\n" "蓝色 Δ: 无人机\n" "橙色球: 烟幕云\n"
+                   "蓝色圆柱: 真目标\n" "灰色圆柱: 假目标\n" "绿色虚线: 烟幕弹轨迹")
+    fig.text(0.02, 0.98, legend_text, fontsize=12, va='top', ha='left',
+             bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5))
 
     def update(frame):
-        for element in dynamic_elements:
-            element.remove()
-        dynamic_elements.clear()
-
+        ax.clear()
         current_time = time_vector[frame]
-        ax.set_title(f'战场想定三维动态可视化 (时间: {current_time:.1f}s)')
+        
+        m1_data = next(iter(simulation_data['missile_paths'].values()))
+        m1_idx = np.searchsorted(m1_data['time'], current_time)
+        m1_pos = m1_data['path'][m1_idx - 1] if m1_idx > 0 else m1_data['path'][0]
 
+        fy1_data = next(iter(simulation_data['uav_strategies'].values()))
+        fy1_idx = np.searchsorted(fy1_data['uav_time'], current_time)
+        fy1_pos = fy1_data['uav_path'][fy1_idx - 1] if fy1_idx > 0 else fy1_data['uav_path'][0]
+
+        target_info = simulation_data['target_info']
+        plot_cylinder(ax, target_info['center_x'], target_info['center_y'], 
+                      target_info['radius'], target_info['height'])
+        plot_cylinder(ax, 0, 0, target_info['radius'], target_info['height'], color='gray', alpha=0.3)
+        
         missile_colors = {'M1': 'red', 'M2': 'darkred', 'M3': 'firebrick'}
         for name, data in simulation_data['missile_paths'].items():
             path, time = data['path'], data['time']
             idx = np.searchsorted(time, current_time)
             if idx > 0:
                 color = missile_colors.get(name, 'black')
-                line, = ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color)
-                scatter = ax.scatter(path[idx-1, 0], path[idx-1, 1], path[idx-1, 2], color=color, marker='x', s=100)
-                dynamic_elements.extend([line, scatter])
+                ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color)
+                ax.scatter(path[idx-1, 0], path[idx-1, 1], path[idx-1, 2], color=color, marker='x', s=100)
 
         uav_colors = {'FY1': 'blue', 'FY2': 'cyan', 'FY3': 'purple', 'FY4': 'deepskyblue', 'FY5': 'navy'}
         for name, data in simulation_data['uav_strategies'].items():
@@ -145,9 +169,8 @@ def animate_scenario(simulation_data, output_filename=None):
             idx = np.searchsorted(time, current_time)
             if idx > 0:
                 color = uav_colors.get(name, 'gray')
-                line, = ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color, linestyle='--')
-                scatter = ax.scatter(path[idx-1, 0], path[idx-1, 1], path[idx-1, 2], color=color, marker='^', s=100)
-                dynamic_elements.extend([line, scatter])
+                ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color, linestyle='--')
+                ax.scatter(path[idx-1, 0], path[idx-1, 1], path[idx-1, 2], color=color, marker='^', s=100)
             
             for smoke in data['smokes']:
                 if smoke['t_detonate'] <= current_time < smoke['t_detonate'] + SMOKE_LIFESPAN:
@@ -155,19 +178,26 @@ def animate_scenario(simulation_data, output_filename=None):
                     cloud_idx = np.searchsorted(cloud_time, current_time)
                     if cloud_idx > 0:
                         center = cloud_path[cloud_idx - 1]
-                        sphere_surface = plot_sphere(ax, center, 10)
-                        dynamic_elements.append(sphere_surface)
-        
-        return fig,
+                        plot_sphere(ax, center, 10)
+                grenade_time, grenade_path = smoke['grenade_time'], smoke['grenade_path']
+                idx_g = np.searchsorted(grenade_time, current_time)
+                if idx_g > 0:
+                    ax.plot(grenade_path[:idx_g,0], grenade_path[:idx_g,1], grenade_path[:idx_g,2], color='green', linestyle=':', alpha=0.7)
 
-    ani = FuncAnimation(fig, update, frames=len(time_vector), init_func=init, blit=False, interval=50)
+        ax.set_title(f'战场想定三维动态可视化 (时间: {current_time:.1f}s)')
+        ax.set_xlabel('X 轴 (m)'); ax.set_ylabel('Y 轴 (m)'); ax.set_zlabel('Z 轴 (m)')
+        set_camera_view(ax, fy1_pos, m1_pos, mode=camera_mode)
+        try:
+            ax.set_box_aspect([1, 1, 1])
+        except AttributeError: pass
+    
+    ani = FuncAnimation(fig, update, frames=len(time_vector), blit=False, interval=50)
 
     if output_filename:
         try:
             ani.save(output_filename, writer='ffmpeg', fps=20, dpi=150)
-            print(f"动画已保存至: {output_filename}。(注意: 这需要您的电脑安装了 'ffmpeg' 工具)")
+            print(f"动画已成功保存至: {output_filename}")
         except Exception as e:
             print(f"保存动画失败: {e}")
-            print("请确认您已安装 'ffmpeg' 并将其添加到了系统环境变量中。")
-
+            print("错误！请确认您已正确安装 'ffmpeg' 并且已将其添加到了系统的环境变量(PATH)中。")
     plt.show()
