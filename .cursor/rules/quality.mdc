@@ -1,0 +1,11 @@
+---
+description: "Code quality & development constraints"
+alwaysApply: true
+---
+
+# 代码质量
+
+- 优先基于主流开源方案，避免重复造轮子。  
+- 前端 API 类型定义必须通过 OpenAPI 自动生成，禁止手写：  
+  ```bash
+  npx openapi-typescript http://localhost:8000/openapi.json -o src/api/client.ts

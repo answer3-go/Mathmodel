@@ -6,15 +6,19 @@ import numpy as np
 import warnings
 from simulation import SMOKE_LIFESPAN
 
-# --- 可视化缩放配置 ---
+# --- 可视化缩放配置 (V4.0 夸张化显示版) ---
 VISUAL_SCALE = {
     'target_scale': 30,        # 目标圆柱体缩放倍数
-    'smoke_cloud_radius': 25,  # 烟云球体半径 (原10)
-    'missile_marker_size': 200, # 导弹标记大小 (原100)
-    'uav_marker_size': 150,    # 无人机标记大小 (原100)
-    'trajectory_linewidth': 3, # 轨迹线宽度 (原默认)
-    'explosion_base_radius': 80, # 爆炸球体基础半径 (原50)
-    'detonation_marker_size': 250 # 起爆点标记大小 (原150)
+    'smoke_cloud_radius': 200,  # 烟云球体半径 (大幅增加，原25)
+    'missile_marker_size': 800, # 导弹标记大小 (大幅增加，原200)
+    'uav_marker_size': 600,    # 无人机标记大小 (大幅增加，原150)
+    'trajectory_linewidth': 8, # 轨迹线宽度 (大幅增加，原3)
+    'explosion_base_radius': 300, # 爆炸球体基础半径 (大幅增加，原80)
+    'detonation_marker_size': 1000, # 起爆点标记大小 (大幅增加，原250)
+    'drop_marker_size': 500,   # 投放点标记大小 (新增)
+    'grenade_trajectory_linewidth': 6, # 烟幕弹轨迹线宽 (新增)
+    'uav_trajectory_linewidth': 6,     # 无人机轨迹线宽 (新增)
+    'missile_trajectory_linewidth': 8  # 导弹轨迹线宽 (新增)
 }
 
 # --- 中文字体和负号的正确显示 ---
@@ -75,7 +79,7 @@ def plot_scenario_static_v2(simulation_data, output_filename=None):
         path = data['path']
         color = missile_colors.get(name, 'black')
         line, = ax.plot(path[:, 0], path[:, 1], path[:, 2], color=color, 
-                       linestyle='-', linewidth=VISUAL_SCALE['trajectory_linewidth'], 
+                       linestyle='-', linewidth=VISUAL_SCALE['missile_trajectory_linewidth'], 
                        label=f'轨迹 {name}')
         label_dict[f'轨迹 {name}'] = line
         scatter = ax.scatter(path[0, 0], path[0, 1], path[0, 2], color=color, 
@@ -88,12 +92,12 @@ def plot_scenario_static_v2(simulation_data, output_filename=None):
         color = uav_colors.get(name, 'gray')
         if '无人机轨迹' not in label_dict:
             line, = ax.plot(path[:, 0], path[:, 1], path[:, 2], color=color, 
-                           linestyle='--', linewidth=VISUAL_SCALE['trajectory_linewidth'], 
+                           linestyle='--', linewidth=VISUAL_SCALE['uav_trajectory_linewidth'], 
                            label='无人机轨迹')
             label_dict['无人机轨迹'] = line
         else:
             ax.plot(path[:, 0], path[:, 1], path[:, 2], color=color, 
-                   linestyle='--', linewidth=VISUAL_SCALE['trajectory_linewidth'])
+                   linestyle='--', linewidth=VISUAL_SCALE['uav_trajectory_linewidth'])
         if '无人机起始点' not in label_dict:
             scatter = ax.scatter(path[0, 0], path[0, 1], path[0, 2], color='blue', 
                                marker='^', s=VISUAL_SCALE['uav_marker_size'], 
@@ -106,10 +110,12 @@ def plot_scenario_static_v2(simulation_data, output_filename=None):
             p_drop = smoke['grenade_path'][0]
             p_detonate = smoke['cloud_path'][0]
             if '投放点' not in label_dict:
-                scatter = ax.scatter(p_drop[0], p_drop[1], p_drop[2], color='green', marker='o', label='投放点')
+                scatter = ax.scatter(p_drop[0], p_drop[1], p_drop[2], color='green', marker='o', 
+                                   s=VISUAL_SCALE['drop_marker_size'], label='投放点')
                 label_dict['投放点'] = scatter
             else:
-                 ax.scatter(p_drop[0], p_drop[1], p_drop[2], color='green', marker='o')
+                 ax.scatter(p_drop[0], p_drop[1], p_drop[2], color='green', marker='o', 
+                           s=VISUAL_SCALE['drop_marker_size'])
             if '起爆点' not in label_dict:
                 scatter = ax.scatter(p_detonate[0], p_detonate[1], p_detonate[2], color='orange', 
                                    marker='*', s=VISUAL_SCALE['detonation_marker_size'], 
@@ -122,17 +128,31 @@ def plot_scenario_static_v2(simulation_data, output_filename=None):
             if '烟幕弹轨迹' not in label_dict:
                 line_g, = ax.plot(grenade_path[:,0], grenade_path[:,1], grenade_path[:,2], 
                                  color='green', linestyle=':', alpha=0.8, 
-                                 linewidth=VISUAL_SCALE['trajectory_linewidth'], 
+                                 linewidth=VISUAL_SCALE['grenade_trajectory_linewidth'], 
                                  label='烟幕弹轨迹')
                 label_dict['烟幕弹轨迹'] = line_g
             else:
                 ax.plot(grenade_path[:,0], grenade_path[:,1], grenade_path[:,2], 
                        color='green', linestyle=':', alpha=0.8, 
-                       linewidth=VISUAL_SCALE['trajectory_linewidth'])
+                       linewidth=VISUAL_SCALE['grenade_trajectory_linewidth'])
+            
+            # 在静态图中显示烟雾云效果（显示起爆后的烟雾云）
+            if 't_detonate' in smoke and 'cloud_path' in smoke:
+                # 显示烟雾云（在起爆点位置显示一个大的烟雾球）
+                detonation_pos = smoke['cloud_path'][0]
+                plot_sphere(ax, detonation_pos, VISUAL_SCALE['smoke_cloud_radius'], 
+                           color='orange', alpha=0.4, edgecolor='darkorange', linewidth=2)
+                
+                # 添加烟雾云图例（只添加一次）
+                if '烟幕云' not in label_dict:
+                    dummy_smoke = ax.scatter([], [], [], color='orange', marker='o', s=100, 
+                                           label='烟幕云 (示意放大)')
+                    label_dict['烟幕云 (示意放大)'] = dummy_smoke
+    
     # 优化视角设置，重点关注目标区域和烟雾效果
     ax.set_xlim(-2000, 5000); ax.set_ylim(-1000, 1000); ax.set_zlim(0, 1000)
     ax.set_xlabel('X 轴 (m)'), ax.set_ylabel('Y 轴 (m)'), ax.set_zlabel('Z 轴 (m)')
-    ax.set_title('战场想定三维静态可视化')
+    ax.set_title('战场想定三维静态可视化 (夸张化显示版)')
     
     # 设置最佳观察角度：俯视角度，便于观察烟雾遮挡效果
     ax.view_init(elev=30, azim=45)  # 仰角30度，方位角45度
@@ -161,9 +181,9 @@ def animate_scenario(simulation_data, output_filename=None, quality='high'):
     ax = fig.add_subplot(111, projection='3d')
     time_vector = simulation_data['time_vector']
     
-    legend_text = ("图例:\n"
-                   "红色 X: 导弹\n" "蓝色 Δ: 无人机\n" "橙色球: 烟幕云\n"
-                   "蓝色圆柱: 真目标\n" "灰色圆柱: 假目标\n" "绿色虚线: 烟幕弹轨迹")
+    legend_text = ("图例 (夸张化显示):\n"
+                   "红色 X: 导弹 (放大显示)\n" "蓝色 Δ: 无人机 (放大显示)\n" "橙色球: 烟幕云 (放大显示)\n"
+                   "蓝色圆柱: 真目标\n" "灰色圆柱: 假目标\n" "绿色虚线: 烟幕弹轨迹 (加粗显示)")
     fig.text(0.02, 0.98, legend_text, fontsize=10, va='top', ha='left',
              bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5))
 
@@ -193,7 +213,7 @@ def animate_scenario(simulation_data, output_filename=None, quality='high'):
                 color = missile_colors.get(name, 'black')
                 # 增加轨迹线宽
                 ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color, 
-                       linewidth=VISUAL_SCALE['trajectory_linewidth'])
+                       linewidth=VISUAL_SCALE['missile_trajectory_linewidth'])
                 # 增大导弹标记
                 ax.scatter(missile_pos[0], missile_pos[1], missile_pos[2], color=color, 
                           marker='x', s=VISUAL_SCALE['missile_marker_size'])
@@ -213,7 +233,7 @@ def animate_scenario(simulation_data, output_filename=None, quality='high'):
                 color = uav_colors.get(name, 'gray')
                 # 增加无人机轨迹线宽
                 ax.plot(path[:idx, 0], path[:idx, 1], path[:idx, 2], color=color, 
-                       linestyle='--', linewidth=VISUAL_SCALE['trajectory_linewidth'])
+                       linestyle='--', linewidth=VISUAL_SCALE['uav_trajectory_linewidth'])
                 # 增大无人机标记
                 ax.scatter(uav_pos[0], uav_pos[1], uav_pos[2], color=color, 
                           marker='^', s=VISUAL_SCALE['uav_marker_size'])
@@ -245,7 +265,7 @@ def animate_scenario(simulation_data, output_filename=None, quality='high'):
                 if idx_g > 0: 
                      ax.plot(grenade_path[:idx_g,0], grenade_path[:idx_g,1], grenade_path[:idx_g,2], 
                             color='green', linestyle=':', alpha=0.8, 
-                            linewidth=VISUAL_SCALE['trajectory_linewidth'])
+                            linewidth=VISUAL_SCALE['grenade_trajectory_linewidth'])
 
         # 固定相机视角，确保能看到所有重要元素
         # 设置固定的坐标轴范围，重点关注目标区域和烟雾效果
@@ -256,7 +276,7 @@ def animate_scenario(simulation_data, output_filename=None, quality='high'):
         # 设置最佳观察角度：俯视角度，便于观察烟雾遮挡效果
         ax.view_init(elev=30, azim=45)  # 仰角30度，方位角45度
 
-        ax.set_title(f'战场想定三维动态可视化 (时间: {current_time:.1f}s)')
+        ax.set_title(f'战场想定三维动态可视化 (夸张化显示版) (时间: {current_time:.1f}s)')
         ax.set_xlabel('X 轴 (m)'), ax.set_ylabel('Y 轴 (m)'), ax.set_zlabel('Z 轴 (m)')
         try: ax.set_box_aspect([1, 1, 1])
         except AttributeError: pass

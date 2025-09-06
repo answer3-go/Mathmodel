@@ -1,0 +1,14 @@
+---
+description: "Documentation first & synchronization rules"
+alwaysApply: true
+---
+
+# 文档优先
+
+- 新增或修改功能前，必须先更新架构/说明文档。  
+- 所有功能文档写在 `README/` 目录，包含：
+  - 功能目的与简要描述  
+  - 数据流走向（Data Flow）  
+  - 核心调用链说明  
+- 根目录 `README.md` 必须实时同步最新结构和用法。  
+- 若文档未更新，禁止直接写代码，请提醒用户补全。

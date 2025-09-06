@@ -1,0 +1,11 @@
+---
+description: "System architecture & directory structure rules"
+alwaysApply: true
+---
+
+# 架构与目录结构
+
+- 在实现功能前，必须先输出系统架构草稿（目录结构、入口文件、接口定义）。  
+- 全局变量、配置项、常量集中放在 `config/` 文件夹或入口配置文件顶部。  
+- 禁止随意生成/修改文件，必须说明意图和影响。  
+- 先 **Plan**（文件结构/实现思路），再 **Act**（具体代码）。

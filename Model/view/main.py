@@ -66,11 +66,6 @@ if __name__ == "__main__":
     # animate_scenario(simulation_results)
     
     # **2. 生成草稿视频给队友看**
-    # 超级草稿模式 - 最快生成
-    print("=== 超级草稿模式 ===")
-    animate_scenario(simulation_results, 
-                     output_filename="result1_animation_ultra_draft.mp4", 
-                     quality='ultra_draft')
     
     # 普通草稿模式
     print("=== 普通草稿模式 ===")
@@ -78,14 +73,12 @@ if __name__ == "__main__":
                      output_filename="result1_animation_draft.mp4", 
                      quality='draft')
     
-    # 快速预览模式 - 不保存视频，直接显示
-    print("=== 快速预览模式（最快）===")
-    # animate_scenario(simulation_results, output_filename=None)  # 取消注释来使用
+    
     
     # **3. 生成最终论文用的高质量静态图和视频**
-    # plot_scenario_static_v2(simulation_results, 
-    #                         output_filename="result1_visualization_final.png")
+    plot_scenario_static_v2(simulation_results, 
+                            output_filename="result1_visualization_final.png")
     
-    # animate_scenario(simulation_results, 
-    #                  output_filename="result1_animation_final.mp4", 
-    #                  quality='high')
+    animate_scenario(simulation_results, 
+                     output_filename="result1_animation_final.mp4", 
+                     quality='high')

@@ -1,0 +1,29 @@
+---
+description: "Logging & error handling rules"
+globs:
+alwaysApply: true
+---
+# 日志与错误处理
+
+- 所有可能抛出异常的代码必须用 try...catch 包裹。  
+- 错误日志必须包含：
+  - 来源模块/函数  
+  - 错误信息 `error.message`  
+  - 上下文数据（输入/状态）  
+  - 错误堆栈（开发环境必需）  
+- 核心业务流程需添加 `info log`，便于生产环境追踪。  
+- 禁止空的 catch 块，若错误可忽略，必须注释原因。  
+
+示例：
+```ts
+try {
+  const validated = UserSchema.parse(data);
+  const res = await api.post("/user", validated);
+  console.log("[SUCCESS] User created", res.data);
+} catch (error) {
+  console.error("[ERROR] Failed to create user", {
+    errorMessage: error.message,
+    errorStack: error.stack,
+  });
+  throw error;
+}
